@@ -1,0 +1,5 @@
+# MQTT client class
+paho-mqtt
+
+# separate settings from code
+python-decouple
