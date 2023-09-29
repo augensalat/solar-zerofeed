@@ -20,7 +20,35 @@ pip install --upgrade pip
 You must set some environment variables:
 
 - `MQTT_BROKER`: Hostname or IP address of MQTT broker
-- `MQTT_TOPIC_INVERTER_POWER`: Inverter (AC) Power MQTT topic
+- `MQTT_TOPIC_INVERTER_POWER`: Inverter (AC) power MQTT topic in Watts
+- `MQTT_TOPIC_SMARTMETER_POWER`: Smartmeter consumption power MQTT topic in Watts
+
+The `MQTT_TOPIC_*_POWER` environment may contain a path if the value contains a JSON string.
+
+> **Example**:
+>
+> The smartmeter topic `smartmeter/SENSOR` returns a string containing the following data
+>
+> ```json
+> {
+>   "Time": "2023-09-29T15:38:54",
+>   "em": {
+>     "consumption_total": 10169.029,
+>     "feed_total": 0.0,
+>     "consumption": 169,
+>     "amperage": 1.11,
+>     "voltage": 229.5,
+>     "frequency": 50,
+>     "phase_deviation": -46
+>   }
+> }
+> ```
+>
+> then you want to configure
+>
+> ```
+> MQTT_TOPIC_SMARTMETER_POWER=smartmeter/SENSOR:em.consumption
+> ```
 
 Optionally you may want to set:
 
