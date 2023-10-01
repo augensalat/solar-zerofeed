@@ -15,10 +15,13 @@ try:
     port = config("MQTT_PORT", default=1883, cast=int)
     topic_inverter_power = config("MQTT_TOPIC_INVERTER_POWER")
     topic_smartmeter_power = config("MQTT_TOPIC_SMARTMETER_POWER")
+    inverter_max_power = int(config("INVERTER_MAX_POWER"))
+    if inverter_max_power <= 0:
+        raise ValueError(f"invalid value {inverter_max_power} for INVERTER_MAX_POWER")
     client_id = f"{splitext(basename(__file__))[0]}-{random.randint(0, 1000)}-{random.randint(0, 1000)}"
     username = config("MQTT_USERNAME", default=None)
     password = config("MQTT_PASSWORD", default=None)
-except UndefinedValueError as inst:
+except (UndefinedValueError, ValueError) as inst:
     print(inst)
     exit(1)
 
@@ -84,7 +87,7 @@ def handle_smartmeter_power(client, data):
 
     burn = data
     print(f"{runtime():6.1f} - burn: {burn}")
-    limit = round(feed + burn)
+    limit = min(round(feed + burn), inverter_max_power)
 
     if limit > 0:
         print(f"         Set inverter power limit to {limit}")

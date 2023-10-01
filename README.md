@@ -19,6 +19,7 @@ pip install --upgrade pip
 
 You must set some environment variables:
 
+- `INVERTER_MAX_POWER`: A positive integer value denoting the inverter's maximum power
 - `MQTT_BROKER`: Hostname or IP address of MQTT broker
 - `MQTT_TOPIC_INVERTER_POWER`: Inverter (AC) power MQTT topic in Watts
 - `MQTT_TOPIC_SMARTMETER_POWER`: Smartmeter consumption power MQTT topic in Watts
