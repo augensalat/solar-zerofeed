@@ -1,4 +1,4 @@
-# Zero Feed-in for a local solar power plant
+# Zero feed-in for a local solar power plant
 
 Dynamic control power limit of a Hoymiles inverter via Ahoy DTU.
 
@@ -56,6 +56,9 @@ Optionally you may want to set:
 - `MQTT_PORT`: default 1883
 - `MQTT_USERNAME`: if broker requires authentication
 - `MQTT_PASSWORD`: ditto
+- `MQTT_TOPIC_INVERTER_LIMITER`: MQTT topic where to _set_ the inverter limit,
+  which is probably "inverter/ctrl/limit/0". If this is not set, the inverter power
+  will not be adjusted.
 
 You can place these in a file called `.env` in the project root directory.
 
