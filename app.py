@@ -1,21 +1,37 @@
 #!/usr/bin/env python3
 
+"""Dynamically limit the power of a Hoymiles HM-xxx inverter via Ahoy DTU
+
+This tool controls the power output of a Hoymiles HM-xxx inverter by
+observing the power consumption of a smartmeter and adjusting the inverter.
+"""
+
 import atexit
 from decouple import config, UndefinedValueError
 import json
 from math import sqrt
-from os.path import basename,splitext
-from paho.mqtt import client as mqtt_client
+from os.path import basename, splitext
+import paho.mqtt.client as mqtt_client
 import random
 from time import time
 
-feed = 0
-burn = 0
-last_set_limit = 0
-current_limit = 0
+feed: float = 0
+burn: float = 0
+last_set_limit: float = 0
+current_limit: float = 0
+client_id: str = None
+username: str = None
+password: str = None
 
 
 def setup():
+    """Set up the application
+
+    Set up the global variables for the application by reading the
+    configuration values from the environment.
+    Also generate a unique client ID for the MQTT client.
+    """
+
     global inverter_max_power, inverter_default_power
     global broker, port, topic_inverter_power, topic_inverter_limiter, topic_smartmeter_power
     global client_id, username, password
@@ -40,7 +56,16 @@ def setup():
         exit(1)
 
 
-def runtime():
+def runtime() -> float:
+    """Return the number of seconds since this function's first call
+
+    If runtime is called for the first time, it will keep the start time
+    and the elapsed time will be 0.
+
+    Returns:
+        float: The number of seconds since the runtime started.
+    """
+
     if not hasattr(runtime, "start_time"):
         runtime.start_time = time()
 
@@ -48,7 +73,28 @@ def runtime():
 
 
 def connect_mqtt() -> mqtt_client:
-    def on_connect(client, userdata, flags, rc):
+    """Connect to an MQTT broker
+
+    Connect to an MQTT broker using the specified credentials.
+
+    Returns:
+        mqtt_client: The connected MQTT client object.
+    """
+
+    def on_connect(client: mqtt_client, userdata: any, flags: dict, rc: int):
+        """Callback is called when the client connects to the MQTT broker
+
+        Parameters:
+            client (mqtt_client): The MQTT client object.
+            userdata(any): The private user data as set in Client() or userdata_set().
+            flags(dict): Response flags sent by the broker.
+            rc (int): The connection result. 0 means success, any other value
+                indicates failure.
+
+        Returns:
+            None
+        """
+
         if rc == 0:
             print(f"{runtime():6.1f} - Connected to MQTT Broker!")
         else:
@@ -62,9 +108,32 @@ def connect_mqtt() -> mqtt_client:
     return client
 
 
-def subscribe(client: mqtt_client, topic_path: str, handler):
+def subscribe(client: mqtt_client, topic_path: str, handler: callable):
+    """Subscribe to a given MQTT topic
 
-    def handle_message(client, userdata, msg):
+    Subscribe and set a handler function to be called when a message is received.
+
+    Args:
+        client(mqtt_client): The MQTT client instance to use for subscribing.
+        topic_path(str): The topic to subscribe to, in the format "path/to/topic"
+        or "topic/to/topic:path.to.json.element".
+        handler(callable): The function to call when a message is received on the subscribed topic.
+
+    Returns:
+        None
+    """
+
+    def handle_message(client: mqtt_client, userdata: any, msg: mqtt_client.MQTTMessage):
+        """Callback function that handles incoming messages from an MQTT broker
+
+        UTF-8-decode the message payload, JSON-decode the message if the topic contains
+        a JSON pointer, and call the handler function with the decoded data.
+
+        Args:
+            client(mqtt_client): The MQTT client instance that received the message.
+            userdata(any): User-defined data that is passed to callbacks.
+            msg(MQTTMessage): The message received from the broker, including topic and payload.
+        """
         data = msg.payload.decode()
         path = subscribe.handlers[msg.topic][1]
 
@@ -89,7 +158,20 @@ def subscribe(client: mqtt_client, topic_path: str, handler):
         client.on_message = handle_message
 
 
-def handle_inverter_power(client, data):
+def handle_inverter_power(client: mqtt_client, data: float):
+    """Handler for an MQTT message received on the inverter power topic
+
+    Update the global `feed` variable with the given `data` value and
+    print the current `feed` value along with the current runtime.
+
+    Args:
+        client(mqtt_client): The MQTT client instance that triggered the callback.
+        data(float): The power data received from the inverter.
+
+    Returns:
+        None
+    """
+
     global feed
 
     feed = data
@@ -97,6 +179,16 @@ def handle_inverter_power(client, data):
 
 
 def set_inverter_limit(client: mqtt_client, limit: float):
+    """Set the power limit of the inverter
+
+    Args:
+        client (mqtt_client): The MQTT client used to publish the power limit.
+        limit (float): The desired power limit in watts.
+
+    Returns:
+        None
+    """
+
     global current_limit, last_set_limit
     actual_limit: int = min(round(limit), inverter_max_power)   # do not exceed inverter_max_power
 
@@ -109,10 +201,38 @@ def set_inverter_limit(client: mqtt_client, limit: float):
             print(f"         Failed to set inverter power limit")
 
 
-def handle_smartmeter_power(client: mqtt_client, data):
+def handle_smartmeter_power(client: mqtt_client, data: float):
+    """Handler for an MQTT message received on the smartmeter power topic
+
+    Update the global `burn` variable with the given `data` value and
+    print the current `burn` value along with the current runtime.
+    Update the inverter power limit if necessary.
+
+    Args:
+        client (mqtt_client): The MQTT client instance.
+        data (float): The power data received from the smartmeter.
+
+    Returns:
+        None
+    """
+
     global burn, last_set_limit, current_limit
 
     def should_set_limit(limit: float):
+        """Determine whether a new limit should be set on the inverter
+
+        The retention period for the next update is shorter the more the new power
+        limit differs from the last one. The minimum period is calculated by
+
+            time_passed > (200 / sqrt(abs(current_limit - new_limit) + 1)
+
+        Args:
+            limit (float): The new limit value to be set on the inverter.
+
+        Returns:
+            bool: True if a new limit should be set on the inverter, False otherwise.
+        """
+
         # limit may be smaller than 0 since feed and burn are not synced
         if limit <= 0:
             return False
@@ -137,6 +257,14 @@ def handle_smartmeter_power(client: mqtt_client, data):
 
 
 def run():
+    """Run the main code
+
+    Connect to an MQTT client, register a function to be called when the
+    program exits, subscribe to the two MQTT topics "smartmeter consumption"
+    and "inverter power" and  start the MQTT client loop to receive messages
+    indefinitely.
+    """
+
     try:
         client = connect_mqtt()
 
@@ -146,7 +274,7 @@ def run():
         subscribe(client, topic_smartmeter_power, handle_smartmeter_power)
         client.loop_forever()
     except KeyboardInterrupt:
-        print("\nTerminated!")
+        print(f"\n{runtime():6.1f} - Terminated!")
         exit()
 
 
